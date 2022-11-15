@@ -6,4 +6,3 @@ Used Redis commands:
 - XGROUP CREATE
 - XREADGROUP
 - XACK
-- 
