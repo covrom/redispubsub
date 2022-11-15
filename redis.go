@@ -7,10 +7,10 @@
 // # URLs
 //
 // For pubsub.OpenTopic and pubsub.OpenSubscription, redispubsub registers
-// for the scheme "kafka".
-// The default URL opener will connect to a default set of Redis brokers based
-// on the environment variable "REDIS_BROKERS", expected to be a comma-delimited
-// set of server addresses.
+// for the scheme "redis".
+// The default URL opener will connect to a Redis Server based
+// on the environment variable "REDIS_URL", expected to
+// server address like "redis://<user>:<pass>@localhost:6379/<db>".
 // To customize the URL opener, or for more details on the URL format,
 // see URLOpener.
 // See https://gocloud.dev/concepts/urls/ for background information.
@@ -22,16 +22,13 @@ package redispubsub
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/url"
-	"os"
-	"path"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/Shopify/sarama"
+	"github.com/go-redis/redis/v9"
 	"gocloud.dev/gcerrors"
 	"gocloud.dev/pubsub"
 	"gocloud.dev/pubsub/batcher"
@@ -55,262 +52,8 @@ func init() {
 	pubsub.DefaultURLMux().RegisterSubscription(Scheme, opener)
 }
 
-// defaultOpener create a default opener.
-type defaultOpener struct {
-	init   sync.Once
-	opener *URLOpener
-	err    error
-}
-
-func (o *defaultOpener) defaultOpener() (*URLOpener, error) {
-	o.init.Do(func() {
-		brokerList := os.Getenv("REDIS_BROKERS")
-		if brokerList == "" {
-			o.err = errors.New("REDIS_BROKERS environment variable not set")
-			return
-		}
-		brokers := strings.Split(brokerList, ",")
-		for i, b := range brokers {
-			brokers[i] = strings.TrimSpace(b)
-		}
-		o.opener = &URLOpener{
-			Brokers: brokers,
-			Config:  MinimalConfig(),
-		}
-	})
-	return o.opener, o.err
-}
-
-func (o *defaultOpener) OpenTopicURL(ctx context.Context, u *url.URL) (*pubsub.Topic, error) {
-	opener, err := o.defaultOpener()
-	if err != nil {
-		return nil, fmt.Errorf("open topic %v: %v", u, err)
-	}
-	return opener.OpenTopicURL(ctx, u)
-}
-
-func (o *defaultOpener) OpenSubscriptionURL(ctx context.Context, u *url.URL) (*pubsub.Subscription, error) {
-	opener, err := o.defaultOpener()
-	if err != nil {
-		return nil, fmt.Errorf("open subscription %v: %v", u, err)
-	}
-	return opener.OpenSubscriptionURL(ctx, u)
-}
-
 // Scheme is the URL scheme that redispubsub registers its URLOpeners under on pubsub.DefaultMux.
-const Scheme = "kafka"
-
-// URLOpener opens Kafka URLs like "kafka://mytopic" for topics and
-// "kafka://group?topic=mytopic" for subscriptions.
-//
-// For topics, the URL's host+path is used as the topic name.
-//
-// For subscriptions, the URL's host+path is used as the group name,
-// and the "topic" query parameter(s) are used as the set of topics to
-// subscribe to. The "offset" parameter is available to subscribers to set
-// the Kafka consumer's initial offset. Where "oldest" starts consuming from
-// the oldest offset of the consumer group and "newest" starts consuming from
-// the most recent offset on the topic.
-type URLOpener struct {
-	// Brokers is the slice of brokers in the Kafka cluster.
-	Brokers []string
-	// Config is the Sarama Config.
-	// Config.Producer.Return.Success must be set to true.
-	Config *sarama.Config
-
-	// TopicOptions specifies the options to pass to OpenTopic.
-	TopicOptions TopicOptions
-	// SubscriptionOptions specifies the options to pass to OpenSubscription.
-	SubscriptionOptions SubscriptionOptions
-}
-
-// OpenTopicURL opens a pubsub.Topic based on u.
-func (o *URLOpener) OpenTopicURL(ctx context.Context, u *url.URL) (*pubsub.Topic, error) {
-	for param := range u.Query() {
-		return nil, fmt.Errorf("open topic %v: invalid query parameter %q", u, param)
-	}
-	topicName := path.Join(u.Host, u.Path)
-	return OpenTopic(o.Brokers, o.Config, topicName, &o.TopicOptions)
-}
-
-// OpenSubscriptionURL opens a pubsub.Subscription based on u.
-func (o *URLOpener) OpenSubscriptionURL(ctx context.Context, u *url.URL) (*pubsub.Subscription, error) {
-	var topics []string
-	for param, value := range u.Query() {
-		switch param {
-		case "topic":
-			topics = value
-		case "offset":
-			if len(value) == 0 {
-				return nil, fmt.Errorf("open subscription %v: invalid query parameter %q", u, param)
-			}
-
-			offset := value[0]
-			switch offset {
-			case "oldest":
-				o.Config.Consumer.Offsets.Initial = sarama.OffsetOldest
-			case "newest":
-				o.Config.Consumer.Offsets.Initial = sarama.OffsetNewest
-			default:
-				return nil, fmt.Errorf("open subscription %v: invalid query parameter %q", u, offset)
-			}
-		default:
-			return nil, fmt.Errorf("open subscription %v: invalid query parameter %q", u, param)
-		}
-	}
-
-	group := path.Join(u.Host, u.Path)
-	return OpenSubscription(o.Brokers, o.Config, group, topics, &o.SubscriptionOptions)
-}
-
-// MinimalConfig returns a minimal sarama.Config.
-func MinimalConfig() *sarama.Config {
-	config := sarama.NewConfig()
-	config.Version = sarama.V0_11_0_0       // required for Headers
-	config.Producer.Return.Successes = true // required for SyncProducer
-	return config
-}
-
-type topic struct {
-	producer  sarama.SyncProducer
-	topicName string
-	opts      TopicOptions
-}
-
-// TopicOptions contains configuration options for topics.
-type TopicOptions struct {
-	// KeyName optionally sets the Message.Metadata key to use as the optional
-	// Kafka message key. If set, and if a matching Message.Metadata key is found,
-	// the value for that key will be used as the message key when sending to
-	// Kafka, instead of being added to the message headers.
-	KeyName string
-
-	// BatcherOptions adds constraints to the default batching done for sends.
-	BatcherOptions batcher.Options
-}
-
-// OpenTopic creates a pubsub.Topic that sends to a Kafka topic.
-//
-// It uses a sarama.SyncProducer to send messages. Producer options can
-// be configured in the Producer section of the sarama.Config:
-// https://godoc.org/github.com/Shopify/sarama#Config.
-//
-// Config.Producer.Return.Success must be set to true.
-func OpenTopic(brokers []string, config *sarama.Config, topicName string, opts *TopicOptions) (*pubsub.Topic, error) {
-	dt, err := openTopic(brokers, config, topicName, opts)
-	if err != nil {
-		return nil, err
-	}
-	bo := sendBatcherOpts.NewMergedOptions(&opts.BatcherOptions)
-	return pubsub.NewTopic(dt, bo), nil
-}
-
-// openTopic returns the driver for OpenTopic. This function exists so the test
-// harness can get the driver interface implementation if it needs to.
-func openTopic(brokers []string, config *sarama.Config, topicName string, opts *TopicOptions) (driver.Topic, error) {
-	if opts == nil {
-		opts = &TopicOptions{}
-	}
-	producer, err := sarama.NewSyncProducer(brokers, config)
-	if err != nil {
-		return nil, err
-	}
-	return &topic{producer: producer, topicName: topicName, opts: *opts}, nil
-}
-
-// SendBatch implements driver.Topic.SendBatch.
-func (t *topic) SendBatch(ctx context.Context, dms []*driver.Message) error {
-	// Convert the messages to a slice of sarama.ProducerMessage.
-	ms := make([]*sarama.ProducerMessage, 0, len(dms))
-	for _, dm := range dms {
-		var kafkaKey sarama.Encoder
-		var headers []sarama.RecordHeader
-		for k, v := range dm.Metadata {
-			if k == t.opts.KeyName {
-				// Use this key's value as the Kafka message key instead of adding it
-				// to the headers.
-				kafkaKey = sarama.ByteEncoder(v)
-			} else {
-				headers = append(headers, sarama.RecordHeader{Key: []byte(k), Value: []byte(v)})
-			}
-		}
-		pm := &sarama.ProducerMessage{
-			Topic:   t.topicName,
-			Key:     kafkaKey,
-			Value:   sarama.ByteEncoder(dm.Body),
-			Headers: headers,
-		}
-		if dm.BeforeSend != nil {
-			asFunc := func(i interface{}) bool {
-				if p, ok := i.(**sarama.ProducerMessage); ok {
-					*p = pm
-					return true
-				}
-				return false
-			}
-			if err := dm.BeforeSend(asFunc); err != nil {
-				return err
-			}
-		}
-		ms = append(ms, pm)
-
-	}
-	err := t.producer.SendMessages(ms)
-	if err != nil {
-		return err
-	}
-	for _, dm := range dms {
-		if dm.AfterSend != nil {
-			asFunc := func(i interface{}) bool { return false }
-			if err := dm.AfterSend(asFunc); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// Close implements io.Closer.
-func (t *topic) Close() error {
-	return t.producer.Close()
-}
-
-// IsRetryable implements driver.Topic.IsRetryable.
-func (t *topic) IsRetryable(error) bool {
-	return false
-}
-
-// As implements driver.Topic.As.
-func (t *topic) As(i interface{}) bool {
-	if p, ok := i.(*sarama.SyncProducer); ok {
-		*p = t.producer
-		return true
-	}
-	return false
-}
-
-// ErrorAs implements driver.Topic.ErrorAs.
-func (t *topic) ErrorAs(err error, i interface{}) bool {
-	return errorAs(err, i)
-}
-
-// ErrorCode implements driver.Topic.ErrorCode.
-func (t *topic) ErrorCode(err error) gcerrors.ErrorCode {
-	return errorCode(err)
-}
-
-func errorCode(err error) gcerrors.ErrorCode {
-	if pes, ok := err.(sarama.ProducerErrors); ok && len(pes) == 1 {
-		return errorCode(pes[0])
-	}
-	if pe, ok := err.(*sarama.ProducerError); ok {
-		return errorCode(pe.Err)
-	}
-	if err == sarama.ErrUnknownTopicOrPartition {
-		return gcerrors.NotFound
-	}
-	return gcerrors.Unknown
-}
+const Scheme = "redis"
 
 type subscription struct {
 	opts          SubscriptionOptions
@@ -356,8 +99,8 @@ type SubscriptionOptions struct {
 // It uses a sarama.ConsumerGroup to receive messages. Consumer options can
 // be configured in the Consumer section of the sarama.Config:
 // https://godoc.org/github.com/Shopify/sarama#Config.
-func OpenSubscription(brokers []string, config *sarama.Config, group string, topics []string, opts *SubscriptionOptions) (*pubsub.Subscription, error) {
-	ds, err := openSubscription(brokers, config, group, topics, opts)
+func OpenSubscription(broker *redis.Client, group string, topics []string, opts *SubscriptionOptions) (*pubsub.Subscription, error) {
+	ds, err := openSubscription(broker, group, topics, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +110,7 @@ func OpenSubscription(brokers []string, config *sarama.Config, group string, top
 // openSubscription returns the driver for OpenSubscription. This function
 // exists so the test harness can get the driver interface implementation if it
 // needs to.
-func openSubscription(brokers []string, config *sarama.Config, group string, topics []string, opts *SubscriptionOptions) (driver.Subscription, error) {
+func openSubscription(broker *redis.Client, group string, topics []string, opts *SubscriptionOptions) (driver.Subscription, error) {
 	if opts == nil {
 		opts = &SubscriptionOptions{}
 	}
@@ -622,48 +365,21 @@ func (s *subscription) ErrorAs(err error, i interface{}) bool {
 
 // ErrorCode implements driver.Subscription.ErrorCode.
 func (*subscription) ErrorCode(err error) gcerrors.ErrorCode {
-	return errorCode(err)
+	switch err {
+	case nil:
+		return gcerrors.OK
+	case context.Canceled:
+		return gcerrors.Canceled
+	case errNotInitialized:
+		return gcerrors.NotFound
+	}
+	return gcerrors.Unknown
 }
 
 func errorAs(err error, i interface{}) bool {
 	switch terr := err.(type) {
-	case sarama.ConsumerError:
-		if p, ok := i.(*sarama.ConsumerError); ok {
-			*p = terr
-			return true
-		}
-	case sarama.ConsumerErrors:
-		if p, ok := i.(*sarama.ConsumerErrors); ok {
-			*p = terr
-			return true
-		}
-	case sarama.ProducerError:
-		if p, ok := i.(*sarama.ProducerError); ok {
-			*p = terr
-			return true
-		}
-	case sarama.ProducerErrors:
-		if p, ok := i.(*sarama.ProducerErrors); ok {
-			*p = terr
-			return true
-		}
-	case sarama.ConfigurationError:
-		if p, ok := i.(*sarama.ConfigurationError); ok {
-			*p = terr
-			return true
-		}
-	case sarama.PacketDecodingError:
-		if p, ok := i.(*sarama.PacketDecodingError); ok {
-			*p = terr
-			return true
-		}
-	case sarama.PacketEncodingError:
-		if p, ok := i.(*sarama.PacketEncodingError); ok {
-			*p = terr
-			return true
-		}
-	case sarama.KError:
-		if p, ok := i.(*sarama.KError); ok {
+	case redis.Error:
+		if p, ok := i.(*redis.Error); ok {
 			*p = terr
 			return true
 		}
