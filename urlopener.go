@@ -53,32 +53,31 @@ func (o *URLOpener) OpenTopicURL(ctx context.Context, u *url.URL) (*pubsub.Topic
 
 // OpenSubscriptionURL opens a pubsub.Subscription based on u.
 func (o *URLOpener) OpenSubscriptionURL(ctx context.Context, u *url.URL) (*pubsub.Subscription, error) {
-	var topics []string
+	var topic, consumer string
+	var noack bool
+	from := "$"
 	for param, value := range u.Query() {
 		switch param {
 		case "topic":
-			topics = value
-		case "offset":
-			if len(value) == 0 {
-				return nil, fmt.Errorf("open subscription %v: invalid query parameter %q", u, param)
-			}
-
-			offset := value[0]
-			switch offset {
-			case "oldest":
-				// FIXME:
-				// o.Config.Consumer.Offsets.Initial = sarama.OffsetOldest
-			case "newest":
-				// FIXME:
-				// o.Config.Consumer.Offsets.Initial = sarama.OffsetNewest
-			default:
-				return nil, fmt.Errorf("open subscription %v: invalid query parameter %q", u, offset)
-			}
+			topic = value[0]
+		case "from":
+			from = value[0]
+		case "consumer":
+			consumer = value[0]
+		case "noack":
+			noack = true
 		default:
 			return nil, fmt.Errorf("open subscription %v: invalid query parameter %q", u, param)
 		}
 	}
-
+	if consumer == "" {
+		return nil, fmt.Errorf("open subscription %v: undefined 'consumer' parameter", u)
+	}
+	o.SubscriptionOptions.From = from
+	o.SubscriptionOptions.NoAck = noack
 	group := path.Join(u.Host, u.Path)
-	return OpenSubscription(o.Broker, group, topics, &o.SubscriptionOptions)
+	if group == "" {
+		return nil, fmt.Errorf("open subscription %v: undefined host/path group name", u)
+	}
+	return OpenSubscription(o.Broker, group, topic, &o.SubscriptionOptions)
 }

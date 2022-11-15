@@ -11,6 +11,11 @@ import (
 	"gocloud.dev/pubsub/driver"
 )
 
+var sendBatcherOpts = &batcher.Options{
+	MaxBatchSize: 100,
+	MaxHandlers:  100, // max concurrency for sends
+}
+
 var errNotInitialized = errors.New("redispubsub: topic not initialized")
 
 type topic struct {
@@ -45,11 +50,6 @@ func openTopic(broker *redis.Client, topicName string, opts *TopicOptions) (driv
 	return &topic{producer: broker, topicName: topicName, opts: *opts}, nil
 }
 
-type TopicMessage struct {
-	Headers map[string]string `json:"headers"`
-	Body    []byte            `json:"body"`
-}
-
 // SendBatch implements driver.Topic.SendBatch.
 func (t *topic) SendBatch(ctx context.Context, dms []*driver.Message) error {
 	if t == nil || t.producer == nil {
@@ -58,9 +58,9 @@ func (t *topic) SendBatch(ctx context.Context, dms []*driver.Message) error {
 
 	// Convert the messages to a slice of redis.XAddArgs.
 	for _, dm := range dms {
-		msg := TopicMessage{
-			Headers: dm.Metadata,
-			Body:    dm.Body,
+		msg := map[string]interface{}{
+			"headers": dm.Metadata,
+			"body":    dm.Body,
 		}
 		args := &redis.XAddArgs{
 			Stream: t.topicName,
