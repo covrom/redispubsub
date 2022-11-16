@@ -2,6 +2,7 @@ package redispubsub
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/go-redis/redis/v9"
@@ -58,8 +59,13 @@ func (t *topic) SendBatch(ctx context.Context, dms []*driver.Message) error {
 
 	// Convert the messages to a slice of redis.XAddArgs.
 	for _, dm := range dms {
+		bm, err := json.Marshal(dm.Metadata)
+		if err != nil {
+			return err
+		}
+
 		msg := map[string]interface{}{
-			"headers": dm.Metadata,
+			"headers": bm,
 			"body":    dm.Body,
 		}
 		args := &redis.XAddArgs{
@@ -76,8 +82,8 @@ func (t *topic) SendBatch(ctx context.Context, dms []*driver.Message) error {
 				}
 				return false
 			}
-			if err := dm.BeforeSend(asFunc); err != nil {
-				return err
+			if e := dm.BeforeSend(asFunc); e != nil {
+				return e
 			}
 		}
 		res, err := t.producer.XAdd(context.Background(), args).Result()

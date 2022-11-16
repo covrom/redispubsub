@@ -2,6 +2,7 @@ package redispubsub
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -94,11 +95,16 @@ func (s *subscription) ReceiveBatch(ctx context.Context, maxMessages int) ([]*dr
 		return nil, err
 	}
 	msg := xStreamSlice[0].Messages[0]
+	bd := msg.Values["body"].([]byte)
+	var bm map[string]string
+	if err := json.Unmarshal(msg.Values["headers"].([]byte), &bm); err != nil {
+		return nil, err
+	}
 
 	dm := &driver.Message{
 		LoggableID: fmt.Sprintf("msg %s", msg.ID),
-		Body:       msg.Values["body"].([]byte),
-		Metadata:   msg.Values["headers"].(map[string]string),
+		Body:       bd,
+		Metadata:   bm,
 		AckID:      msg.ID,
 		AsFunc: func(i interface{}) bool {
 			if p, ok := i.(*redis.XMessage); ok {
