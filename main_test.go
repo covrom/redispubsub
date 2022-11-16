@@ -13,6 +13,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var redisCli *redis.Client
+
 func TestMain(m *testing.M) {
 	// uses a sensible default on windows (tcp/http) and linux/osx (socket)
 	pool, err := dockertest.NewPool("")
@@ -49,6 +51,7 @@ func TestMain(m *testing.M) {
 			return err
 		}
 		rdb := redis.NewClient(opt)
+		redisCli = rdb
 		_, err = rdb.Ping(context.Background()).Result()
 		return err
 	}); err != nil {
