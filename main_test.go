@@ -41,6 +41,8 @@ func TestMain(m *testing.M) {
 	hostAndPort := resource.GetHostPort("6379/tcp")
 	databaseUrl := fmt.Sprintf("redis://%s/0", hostAndPort)
 
+	os.Setenv("REDIS_URL", databaseUrl)
+
 	if err = pool.Retry(func() error {
 		opt, err := redis.ParseURL(databaseUrl)
 		if err != nil {
