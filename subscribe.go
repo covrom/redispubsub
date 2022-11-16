@@ -56,7 +56,7 @@ func openSubscription(broker *redis.Client, group, topic string, opts *Subscript
 	}
 	// Create a consumer group eater on the stream, and start consuming from
 	// the latest message (represented by $) or From id
-	_, err := broker.XGroupCreate(context.Background(), topic, group, opts.From).Result()
+	_, err := broker.XGroupCreateMkStream(context.Background(), topic, group, opts.From).Result()
 	if err != nil && !strings.HasPrefix(err.Error(), "BUSYGROUP") {
 		return nil, err
 	}
@@ -95,9 +95,9 @@ func (s *subscription) ReceiveBatch(ctx context.Context, maxMessages int) ([]*dr
 		return nil, err
 	}
 	msg := xStreamSlice[0].Messages[0]
-	bd := msg.Values["body"].([]byte)
+	bd := []byte(msg.Values["body"].(string))
 	var bm map[string]string
-	if err := json.Unmarshal(msg.Values["headers"].([]byte), &bm); err != nil {
+	if err := json.Unmarshal([]byte(msg.Values["headers"].(string)), &bm); err != nil {
 		return nil, err
 	}
 
