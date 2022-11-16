@@ -2,6 +2,7 @@ package redispubsub_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -21,8 +22,8 @@ func TestMain(m *testing.M) {
 
 	// pulls an image, creates a container based on it and runs it
 	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
-		Repository: "redis",  // image name
-		Tag:        "latest", // version tag
+		Repository: "redis", // image name
+		Tag:        "7",     // version tag
 	}, func(config *docker.HostConfig) {
 		// set AutoRemove to true so that stopped container goes away by itself
 		config.AutoRemove = true
@@ -36,8 +37,12 @@ func TestMain(m *testing.M) {
 
 	// exponential backoff-retry, because the application in the container might not be ready to accept connections yet
 	pool.MaxWait = 120 * time.Second
+
+	hostAndPort := resource.GetHostPort("6379/tcp")
+	databaseUrl := fmt.Sprintf("redis://%s/0", hostAndPort)
+
 	if err = pool.Retry(func() error {
-		opt, err := redis.ParseURL("redis://localhost:6379/0")
+		opt, err := redis.ParseURL(databaseUrl)
 		if err != nil {
 			return err
 		}
