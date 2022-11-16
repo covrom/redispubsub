@@ -56,6 +56,12 @@ func TestBasicUsage(t *testing.T) {
 			if !bytes.Equal(msg.Body, orig.Body) {
 				t.Error("body not equal")
 			}
+			for k, v := range msg.Metadata {
+				if orig.Metadata[k] != v {
+					t.Error("metadata not equal")
+				}
+			}
+
 			break
 		}
 	}()
