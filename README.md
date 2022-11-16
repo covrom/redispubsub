@@ -6,3 +6,5 @@ Used Redis commands:
 - XGROUP CREATE
 - XREADGROUP
 - XACK
+
+See basic_test.go for usage example.
