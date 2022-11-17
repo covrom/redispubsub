@@ -7,7 +7,7 @@ Used Redis commands:
 - XREADGROUP
 - XACK
 
-See basic_test.go for usage example.
+See [basic_test.go](basic_test.go) for usage example.
 
 ## Monitoring with Prometheus & Grafana
 Use [redis-exporter](https://github.com/oliver006/redis_exporter) prometheus exporter with `check-streams` option.
