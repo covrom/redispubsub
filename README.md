@@ -34,6 +34,11 @@ if _, err := rdb.XGroupCreateMkStream(context.Background(),
 
 ## How to open topic and send message
 ```go
+import (
+    _ "github.com/covrom/redispubsub"
+	"gocloud.dev/pubsub"
+)
+
 ctx := context.Background()
 topic, err := pubsub.OpenTopic(ctx, "redis://topics/1")
 if err != nil {
@@ -60,6 +65,11 @@ if err != nil {
 
 ## How to subscribe on topic
 ```go
+import (
+    _ "github.com/covrom/redispubsub"
+	"gocloud.dev/pubsub"
+)
+
 subs, err := pubsub.OpenSubscription(ctx, "redis://group1?consumer=cons1&topic=topics/1")
 if err != nil {
     return err
