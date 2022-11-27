@@ -16,6 +16,8 @@ The connection string must be defined in the `REDIS_URL` environment value.
 A consumer group (but not a consumer!) must be created before posting messages to topic with unattached consumers.
 This driver does not support new consumers attaching with a new group name after the publisher has sent multiple messages to a topic, because they do not receive previous messages.
 
+You can attach topic consumers before attach publishers, or create groups manually: 
+
 ```go
 opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
 if err != nil {
