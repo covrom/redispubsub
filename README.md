@@ -6,7 +6,7 @@ Using Redis Streams, this driver supports `at-least-once` delivery.
 Used Redis commands:
 - XADD
 - XGROUP CREATE
-- XREADGROUP
+- XREADGROUP (with pending and then new messages - only this library actually supports it)
 - XACK
 
 ## Connection to Redis
