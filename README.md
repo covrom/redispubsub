@@ -1,5 +1,6 @@
 # redispubsub
 Redis driver for https://godoc.org/gocloud.dev/pubsub package.
+A great alternative to using Kafka, with the ability to quickly switch to it.
 
 Using Redis Streams, this driver supports `at-least-once` delivery.
 
