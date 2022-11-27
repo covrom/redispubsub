@@ -5,6 +5,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	_ "github.com/covrom/redispubsub"
 	"gocloud.dev/pubsub"
@@ -43,6 +44,18 @@ func TestBasicUsage(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	time.Sleep(100 * time.Millisecond)
+	err = topic.Send(ctx, orig)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	time.Sleep(100 * time.Millisecond)
+	err = topic.Send(ctx, orig)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
@@ -55,7 +68,7 @@ func TestBasicUsage(t *testing.T) {
 			return
 		}
 		defer subs.Shutdown(ctx)
-		for i := 0; i < 2; i++ {
+		for i := 0; i < 4; i++ {
 			msg, err := subs.Receive(ctx)
 			if err != nil {
 				// Errors from Receive indicate that Receive will no longer succeed.
@@ -63,9 +76,14 @@ func TestBasicUsage(t *testing.T) {
 				return
 			}
 			// Do work based on the message, for example:
-			t.Logf("Got message: %q\n", msg.Body)
-			// Messages must always be acknowledged with Ack.
-			msg.Ack()
+			t.Logf("Got message %s: %q\n", msg.LoggableID, msg.Body)
+			// Emulate not ack message 0
+			if i > 0 {
+				// Messages must always be acknowledged with Ack.
+				msg.Ack()
+				// wait for Ack asynchronous (see docs for Ack)
+				time.Sleep(100 * time.Millisecond)
+			}
 
 			if !bytes.Equal(msg.Body, orig.Body) {
 				t.Error("body not equal")
@@ -74,14 +92,6 @@ func TestBasicUsage(t *testing.T) {
 			for k, v := range msg.Metadata {
 				if orig.Metadata[k] != v {
 					t.Error("metadata not equal")
-					return
-				}
-			}
-			if i == 0 {
-				// send after consumer attached
-				err = topic.Send(ctx, orig)
-				if err != nil {
-					t.Error(err)
 					return
 				}
 			}
