@@ -10,6 +10,9 @@ The driver uses these Redis commands:
 - XREADGROUP (with pending and then new messages - only this library actually supports it)
 - XACK
 
+Many other queuing implementations with Redis Streams contain a big bug. They incorrectly support reconnecting a consumer to a topic if a message has been received but not acknowledged. They use ">" streaming strategy, which does not deliver unacknowledged messages more than once. And you miss messages when microservices are restarted.
+This library does not have this disadvantage.
+
 ## Connection to Redis
 The connection string must be defined in the `REDIS_URL` environment value.
 
