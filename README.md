@@ -36,7 +36,7 @@ if _, err := rdb.XGroupCreateMkStream(context.Background(),
 ```go
 import (
     _ "github.com/covrom/redispubsub"
-	"gocloud.dev/pubsub"
+    "gocloud.dev/pubsub"
 )
 
 ctx := context.Background()
@@ -67,7 +67,7 @@ if err != nil {
 ```go
 import (
     _ "github.com/covrom/redispubsub"
-	"gocloud.dev/pubsub"
+    "gocloud.dev/pubsub"
 )
 
 subs, err := pubsub.OpenSubscription(ctx, "redis://group1?consumer=cons1&topic=topics/1")
