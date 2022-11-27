@@ -14,7 +14,7 @@ The connection string must be defined in the `REDIS_URL` environment value.
 
 ## Warning about creating a topic consumer group for the first time
 A consumer group (but not a consumer!) must be created before posting messages to topic with unattached consumers.
-This driver does not support new consumers attaching with a new group name after the pubblisher has sent multiple messages to a topic, because they do not receive previous messages.
+This driver does not support new consumers attaching with a new group name after the publisher has sent multiple messages to a topic, because they do not receive previous messages.
 
 ```go
 if _, err := redisCli.XGroupCreateMkStream(context.Background(),
