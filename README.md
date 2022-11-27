@@ -17,7 +17,13 @@ A consumer group (but not a consumer!) must be created before posting messages t
 This driver does not support new consumers attaching with a new group name after the publisher has sent multiple messages to a topic, because they do not receive previous messages.
 
 ```go
-if _, err := redisCli.XGroupCreateMkStream(context.Background(),
+opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
+if err != nil {
+    return err
+}
+rdb := redis.NewClient(opt)
+
+if _, err := rdb.XGroupCreateMkStream(context.Background(),
     // here $ is needed, see https://redis.io/commands/xgroup-create/
     "topics/1", "group1", "$").Result(); err != nil {
     return err
