@@ -4,7 +4,7 @@ A great alternative to using Kafka, with the ability to quickly switch to it.
 
 Using Redis Streams, this driver supports `at-least-once` delivery.
 
-Used Redis commands:
+The driver uses these Redis commands:
 - XADD
 - XGROUP CREATE
 - XREADGROUP (with pending and then new messages - only this library actually supports it)
