@@ -18,24 +18,13 @@ This library does not have this disadvantage.
 The connection string must be defined in the `REDIS_URL` environment value.
 
 ## Warning about creating a topic consumer group for the first time
-A consumer group (but not a consumer!) must be created before posting messages to topic with unattached consumers.
-This driver does not support new consumers attaching with a new group name after the publisher has sent multiple messages to a topic, because they do not receive previous messages.
+All consumers already have a group, even if there is only one consumer in the group.
 
-You can attach topic consumers before attach publishers, or create groups manually: 
+Consumer groups receive the same messages from the topic, and consumers within the group receive these messages exclusively.
 
-```go
-opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
-if err != nil {
-    return err
-}
-rdb := redis.NewClient(opt)
+![Messages flow](flow.png)
 
-if _, err := rdb.XGroupCreateMkStream(context.Background(),
-    // here $ is needed, see https://redis.io/commands/xgroup-create/
-    "topics/1", "group1", "$").Result(); err != nil {
-    return err
-}
-```
+This driver supports new consumers joining with a new group name after the publisher has sent multiple messages to a topic before the group was created. These consumers will receive all previous non-ACK-ed messages from the beginning of the topic.
 
 ## How to open topic and send message
 ```go

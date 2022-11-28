@@ -29,7 +29,7 @@ type subscription struct {
 
 // SubscriptionOptions contains configuration for subscriptions.
 type SubscriptionOptions struct {
-	From     string // starting id, $ by default
+	From     string // starting id ($ after tail of stream), 0 by default (from head of stream)
 	Consumer string // unique consumer name
 	NoAck    bool
 }
@@ -52,7 +52,7 @@ func openSubscription(broker *redis.Client, group, topic string, opts *Subscript
 		opts = &SubscriptionOptions{}
 	}
 	if opts.From == "" {
-		opts.From = "$"
+		opts.From = "0"
 	}
 	// Create a consumer group eater on the stream, and start consuming from
 	// the latest message (represented by $) or From id

@@ -3,7 +3,6 @@ package redispubsub_test
 import (
 	"bytes"
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -12,23 +11,10 @@ import (
 )
 
 func TestBasicUsage(t *testing.T) {
-	// consumer group must be created before posting messages with unattached consumers
-	if _, err := redisCli.XGroupCreateMkStream(context.Background(),
-		"topics/1", "group1", "$").Result(); err != nil {
-		t.Error(err)
-		return
-	}
-
 	ctx := context.Background()
-	topic, err := pubsub.OpenTopic(ctx, "redis://topics/1")
-	if err != nil {
-		t.Errorf("could not open topic: %v", err)
-		return
-	}
-	defer topic.Shutdown(ctx)
 
-	orig := &pubsub.Message{
-		Body: []byte("Hello, World!\n"),
+	orig1 := &pubsub.Message{
+		Body: []byte("Message #1"),
 		// Metadata is optional and can be nil.
 		Metadata: map[string]string{
 			// These are examples of metadata.
@@ -38,7 +24,46 @@ func TestBasicUsage(t *testing.T) {
 		},
 	}
 
+	orig2 := &pubsub.Message{
+		Body: []byte("Message #2"),
+		// Metadata is optional and can be nil.
+		Metadata: map[string]string{
+			// These are examples of metadata.
+			// There is nothing special about the key names.
+			"language": "en",
+		},
+	}
+
 	// send before consumer attach
+	pubTest(ctx, orig1, t)
+	time.Sleep(100 * time.Millisecond)
+	pubTest(ctx, orig2, t)
+	time.Sleep(100 * time.Millisecond)
+	pubTest(ctx, orig1, t)
+	time.Sleep(100 * time.Millisecond)
+
+	// attach consumer and create group if needed
+	subTest(ctx, orig1, t)
+	time.Sleep(100 * time.Millisecond)
+	subTest(ctx, orig2, t)
+	time.Sleep(100 * time.Millisecond)
+	subTest(ctx, orig1, t)
+	time.Sleep(100 * time.Millisecond)
+
+	res, err := redisCli.XPending(ctx, "topics/1", "group1").Result()
+	if res.Count != 0 {
+		t.Error(res.Count, err)
+	}
+}
+
+func pubTest(ctx context.Context, orig *pubsub.Message, t *testing.T) {
+	topic, err := pubsub.OpenTopic(ctx, "redis://topics/1")
+	if err != nil {
+		t.Errorf("could not open topic: %v", err)
+		return
+	}
+	defer topic.Shutdown(ctx)
+
 	err = topic.Send(ctx, orig)
 	if err != nil {
 		t.Error(err)
@@ -56,12 +81,12 @@ func TestBasicUsage(t *testing.T) {
 		t.Error(err)
 		return
 	}
+}
 
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-
+func subTest(ctx context.Context, orig *pubsub.Message, t *testing.T) {
+	done := make(chan struct{})
 	go func() {
-		defer wg.Done()
+		defer close(done)
 		subs, err := pubsub.OpenSubscription(ctx, "redis://group1?consumer=cons1&topic=topics/1")
 		if err != nil {
 			t.Error(err)
@@ -97,11 +122,5 @@ func TestBasicUsage(t *testing.T) {
 			}
 		}
 	}()
-
-	wg.Wait()
-
-	res, err := redisCli.XPending(ctx, "topics/1", "group1").Result()
-	if res.Count != 0 {
-		t.Error(res.Count, err)
-	}
+	<-done
 }

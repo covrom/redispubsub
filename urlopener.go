@@ -55,7 +55,7 @@ func (o *URLOpener) OpenTopicURL(ctx context.Context, u *url.URL) (*pubsub.Topic
 func (o *URLOpener) OpenSubscriptionURL(ctx context.Context, u *url.URL) (*pubsub.Subscription, error) {
 	var topic, consumer string
 	var noack bool
-	from := "$"
+	from := ""
 	for param, value := range u.Query() {
 		switch param {
 		case "topic":
