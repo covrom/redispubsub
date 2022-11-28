@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/go-redis/redis/v9"
 	"gocloud.dev/pubsub"
@@ -53,7 +54,7 @@ func (o *URLOpener) OpenTopicURL(ctx context.Context, u *url.URL) (*pubsub.Topic
 
 // OpenSubscriptionURL opens a pubsub.Subscription based on u.
 func (o *URLOpener) OpenSubscriptionURL(ctx context.Context, u *url.URL) (*pubsub.Subscription, error) {
-	var topic, consumer string
+	var topic, consumer, autoclaim string
 	var noack bool
 	from := ""
 	for param, value := range u.Query() {
@@ -64,6 +65,8 @@ func (o *URLOpener) OpenSubscriptionURL(ctx context.Context, u *url.URL) (*pubsu
 			from = value[0]
 		case "consumer":
 			consumer = value[0]
+		case "autoclaim":
+			autoclaim = value[0]
 		case "noack":
 			noack = true
 		default:
@@ -75,6 +78,13 @@ func (o *URLOpener) OpenSubscriptionURL(ctx context.Context, u *url.URL) (*pubsu
 	}
 	o.SubscriptionOptions.From = from
 	o.SubscriptionOptions.NoAck = noack
+	if autoclaim != "" {
+		dur, err := time.ParseDuration(autoclaim)
+		if err != nil {
+			return nil, fmt.Errorf("open subscription %v: bad autoclaim: %w", u, err)
+		}
+		o.SubscriptionOptions.AutoClaimIdleTime = dur
+	}
 	group := path.Join(u.Host, u.Path)
 	if group == "" {
 		return nil, fmt.Errorf("open subscription %v: undefined host/path group name", u)
