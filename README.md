@@ -10,6 +10,7 @@ The driver uses these Redis commands:
 - XGROUP CREATE
 - XREADGROUP (with pending and then new messages - only this library actually supports it)
 - XACK
+- XAUTOCLAIM
 
 Many other queuing implementations with Redis Streams contain a big bug. They incorrectly support reconnecting a consumer to a topic if a message has been received but not acknowledged. They use ">" streaming strategy, which does not deliver unacknowledged messages more than once. And you miss messages when microservices are restarted.
 This library does not have this disadvantage.
@@ -57,6 +58,11 @@ if err != nil {
 }
 ```
 
+OpenTopic connection string host/path is required and must contain the topic name.
+
+Connection string query parameters:
+- `maxlen` is MAXLEN parameter for XADD (limit queue length), unlimited if not set.
+
 ## How to subscribe on topic
 ```go
 import (
@@ -80,6 +86,15 @@ fmt.Printf("Got message: %q\n", msg.Body)
 // Messages must always be acknowledged with Ack.
 msg.Ack()
 ```
+
+OpenSubscription connection string host(path) is required and must contain the consumer group name.
+
+Connection string query parameters:
+- `topic` is topic name, required
+- `consumer` is unique consumer name, required
+- `from` is FROM option for creating a consumer group (if not exists) with XGROUP CREATE, default is '0'
+- `autoclaim` is *min-idle-time* option for XAUTOCLAIM, 30 min by default
+- `noack` is NOACK option for XREADGROUP, not used by default
 
 See [basic_test.go](basic_test.go) for full usage example.
 
